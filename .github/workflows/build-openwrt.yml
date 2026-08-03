@@ -9,9 +9,6 @@ on:
       - 'v*'
     branches:
       - main
-    paths:
-      - '.config'
-      - '.github/workflows/build-openwrt.yml'
 
 env:
   REPO_URL: https://github.com/openwrt/openwrt
