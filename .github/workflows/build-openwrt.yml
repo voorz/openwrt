@@ -10,6 +10,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 env:
   REPO_URL: https://github.com/openwrt/openwrt
   BRANCH: main
