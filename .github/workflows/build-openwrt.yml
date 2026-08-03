@@ -5,6 +5,8 @@ on:
   schedule:
     - cron: '0 0 * * 1'
   push:
+    tags:
+      - 'v*'
     branches:
       - main
     paths:
@@ -83,3 +85,36 @@ jobs:
         with:
           name: OpenWrt firmware ${{ env.DEVICE }} ${{ env.BUILD_DATE }}
           path: ${{ env.FIRMWARE }}
+
+      - name: Generate release tag
+        id: tag
+        if: env.BUILD_STATUS == 'success'
+        run: |
+          echo "RELEASE_TAG=openwrt-$(date +"%Y%m%d")-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        if: env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenWrt ${{ github.ref_name }}
+          body: |
+            ## OpenWrt 固件
+            
+            **设备**: Cudy TR3000 256MB v1
+            **平台**: MediaTek Filogic (mediatek/filogic)
+            **构建日期**: ${{ env.BUILD_DATE }}
+            
+            ### 固件说明
+            - 包含 LuCI Web 界面
+            - Argon 主题 + 中文语言包
+            - 基础网络功能
+            
+            ### 刷机方法
+            1. 访问路由器后台 http://192.168.1.1
+            2. 系统 → 备份/升级
+            3. 上传 sysupgrade.bin 文件
+          files: |
+            ${{ env.FIRMWARE }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-v1-squashfs-sysupgrade.bin
+          draft: false
+          prerelease: false
