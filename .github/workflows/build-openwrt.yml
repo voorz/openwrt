@@ -78,6 +78,12 @@ jobs:
           cd openwrt-src/bin/targets/*/*
           rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          TAG_VERSION=$(echo $GITHUB_REF_NAME | sed 's/^v//; s/\.//g')
+          OLD_NAME=$(ls openwrt-mediatek-filogic-cudy_tr3000-256mb-*-squashfs-sysupgrade.bin 2>/dev/null | head -1)
+          NEW_NAME="openwrt-mediatek-filogic-cudy_tr3000-256mb-voorz_v${TAG_VERSION}-squashfs-sysupgrade.bin"
+          if [ -n "$OLD_NAME" ] && [ "$OLD_NAME" != "$NEW_NAME" ]; then
+            mv "$OLD_NAME" "$NEW_NAME"
+          fi
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
@@ -99,22 +105,23 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: OpenWrt ${{ github.ref_name }}
           body: |
-            ## OpenWrt 固件
+            ## OpenWrt Firmware
             
-            **设备**: Cudy TR3000 256MB v1
-            **平台**: MediaTek Filogic (mediatek/filogic)
-            **构建日期**: ${{ env.BUILD_DATE }}
+            **Device**: Cudy TR3000 256MB v1
+            **Platform**: MediaTek Filogic (mediatek/filogic)
+            **Build Date**: ${{ env.BUILD_DATE }}
             
-            ### 固件说明
-            - 包含 LuCI Web 界面
-            - Argon 主题 + 中文语言包
-            - 基础网络功能
+            ### Firmware Features
+            - LuCI Web Interface
+            - Argon theme + Chinese language pack
+            - Basic networking functionality
             
-            ### 刷机方法
-            1. 访问路由器后台 http://192.168.1.1
-            2. 系统 → 备份/升级
-            3. 上传 sysupgrade.bin 文件
+            ### Installation
+            1. Access router admin panel at http://10.0.0.1
+            2. Navigate to System → Backup/Flash Firmware
+            3. Upload the sysupgrade.bin file
+            4. Wait for the router to reboot
           files: |
-            ${{ env.FIRMWARE }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-v1-squashfs-sysupgrade.bin
+            ${{ env.FIRMWARE }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-voorz_v*.squashfs-sysupgrade.bin
           draft: false
           prerelease: false

@@ -35,3 +35,7 @@ git-src
 .cproject
 .ccache
 .vscode*
+
+
+.catpaw/
+docs/
