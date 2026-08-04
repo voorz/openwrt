@@ -57,7 +57,7 @@ jobs:
           # Pre-configure custom APK feeds pointing to GitHub Release
           mkdir -p files/etc/apk/repositories.d
           cat > files/etc/apk/repositories.d/customfeeds.list << 'FEEDS'
-          https://github.com/voorz/openwrt/releases/latest/download/packages.adb
+          https://github.com/voorz/openwrt-packages/releases/latest/download/packages.adb
           FEEDS
           make defconfig
 
@@ -96,7 +96,8 @@ jobs:
           find bin/packages/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
           find bin/targets/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
           # Copy firmware to repo dir for upload
-          cp $FIRMWARE/openwrt-mediatek-filogic-cudy_tr3000-256mb-voorz_v*.squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || true
+          cp $FIRMWARE/openwrt-mediatek-filogic-cudy_tr3000-256mb-voorz_v*.squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || \
+          cp $FIRMWARE/openwrt-mediatek-filogic-cudy_tr3000-256mb-*-squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || true
           # Generate single combined index
           cd /tmp/apk-repo && apk-tools index --output packages.adb *.apk 2>/dev/null || true
           echo "Generated combined packages.adb with $(ls /tmp/apk-repo/*.apk | wc -l) packages"
@@ -140,16 +141,28 @@ jobs:
             4. Wait for the router to reboot
             
             ### Package Repository
-            APK packages are included in this release.
-            The firmware is pre-configured to use this repository.
+            APK packages are available at: https://github.com/voorz/openwrt-packages/releases
           files: |
-            ${{ env.APK_REPO }}/*
+            ${{ env.APK_REPO }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-*.squashfs-sysupgrade.bin
           draft: false
           prerelease: false
 
-      - name: Ensure release is published
+      - name: Upload APK packages to packages repo
+        if: env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --repo voorz/openwrt-packages \
+            --title "OpenWrt Packages ${{ github.ref_name }}" \
+            --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
+            ${{ env.APK_REPO }}/*.apk \
+            ${{ env.APK_REPO }}/packages.adb
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+
+      - name: Ensure releases are published
         if: env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
           gh release edit ${{ github.ref_name }} --draft=false --prerelease=false
+          gh release edit ${{ github.ref_name }} --repo voorz/openwrt-packages --draft=false --prerelease=false
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
