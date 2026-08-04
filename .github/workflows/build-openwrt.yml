@@ -99,8 +99,20 @@ jobs:
           cp $FIRMWARE/openwrt-mediatek-filogic-cudy_tr3000-256mb-voorz_v*.squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || \
           cp $FIRMWARE/openwrt-mediatek-filogic-cudy_tr3000-256mb-*-squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || true
           # Generate single combined index
-          cd /tmp/apk-repo && apk-tools index --output packages.adb *.apk 2>/dev/null || true
-          echo "Generated combined packages.adb with $(ls /tmp/apk-repo/*.apk | wc -l) packages"
+          APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir/host/bin -name 'apk' -type f 2>/dev/null | head -1)
+          if [ -z "$APK_TOOLS" ]; then
+            APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir -name 'apk' -type f 2>/dev/null | head -1)
+          fi
+          cd /tmp/apk-repo
+          if [ -n "$APK_TOOLS" ]; then
+            $APK_TOOLS index --output packages.adb *.apk
+            echo "Generated packages.adb using $APK_TOOLS"
+          else
+            apt-get install -y apk-tools 2>/dev/null && apk-tools index --output packages.adb *.apk || true
+            echo "Generated packages.adb using system apk-tools"
+          fi
+          ls -la packages.adb 2>/dev/null || echo "WARNING: packages.adb not found"
+          echo "Total packages: $(ls /tmp/apk-repo/*.apk | wc -l)"
           echo "APK_REPO=/tmp/apk-repo" >> $GITHUB_ENV
 
       - name: Upload firmware
@@ -118,7 +130,7 @@ jobs:
 
       - name: Upload firmware to release
         uses: softprops/action-gh-release@v2
-        if: env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.ref_name }}
           name: OpenWrt ${{ github.ref_name }}
@@ -143,24 +155,29 @@ jobs:
             ### Package Repository
             APK packages are available at: https://github.com/voorz/openwrt-packages/releases
           files: |
-            ${{ env.APK_REPO }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-*.squashfs-sysupgrade.bin
+            ${{ env.FIRMWARE }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-*-squashfs-sysupgrade.bin
           draft: false
           prerelease: false
 
       - name: Upload APK packages to packages repo
-        if: env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
           gh release create ${{ github.ref_name }} \
             --repo voorz/openwrt-packages \
             --title "OpenWrt Packages ${{ github.ref_name }}" \
             --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
             ${{ env.APK_REPO }}/*.apk \
-            ${{ env.APK_REPO }}/packages.adb
+            ${{ env.APK_REPO }}/packages.adb 2>/dev/null || \
+          gh release create ${{ github.ref_name }} \
+            --repo voorz/openwrt-packages \
+            --title "OpenWrt Packages ${{ github.ref_name }}" \
+            --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
+            ${{ env.APK_REPO }}/*.apk
         env:
           GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
 
       - name: Ensure releases are published
-        if: env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
           gh release edit ${{ github.ref_name }} --draft=false --prerelease=false
           gh release edit ${{ github.ref_name }} --repo voorz/openwrt-packages --draft=false --prerelease=false
