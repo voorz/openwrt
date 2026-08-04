@@ -7,8 +7,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -56,6 +54,17 @@ jobs:
         run: |
           cd openwrt-src
           [ -e $GITHUB_WORKSPACE/.config ] && cp $GITHUB_WORKSPACE/.config .config || make menuconfig DEFCONFIG=1
+          # Pre-configure custom APK feeds pointing to GitHub Release
+          mkdir -p files/etc/apk/repositories.d
+          cat > files/etc/apk/repositories.d/customfeeds.list << 'FEEDS'
+          https://github.com/voorz/openwrt/releases/latest/download/targets/mediatek/filogic/packages/packages.adb
+          https://github.com/voorz/openwrt/releases/latest/download/packages/aarch64_cortex-a53/base/packages.adb
+          https://github.com/voorz/openwrt/releases/latest/download/packages/aarch64_cortex-a53/luci/packages.adb
+          https://github.com/voorz/openwrt/releases/latest/download/packages/aarch64_cortex-a53/packages/packages.adb
+          https://github.com/voorz/openwrt/releases/latest/download/packages/aarch64_cortex-a53/routing/packages.adb
+          https://github.com/voorz/openwrt/releases/latest/download/packages/aarch64_cortex-a53/telephony/packages.adb
+          https://github.com/voorz/openwrt/releases/latest/download/packages/aarch64_cortex-a53/video/packages.adb
+          FEEDS
           make defconfig
 
       - name: Download packages
@@ -76,7 +85,6 @@ jobs:
         if: env.BUILD_STATUS == 'success'
         run: |
           cd openwrt-src/bin/targets/*/*
-          rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           TAG_VERSION=$(echo $GITHUB_REF_NAME | sed 's/^v//; s/\.//g')
           OLD_NAME=$(ls openwrt-mediatek-filogic-cudy_tr3000-256mb-*-squashfs-sysupgrade.bin 2>/dev/null | head -1)
@@ -84,6 +92,26 @@ jobs:
           if [ -n "$OLD_NAME" ] && [ "$OLD_NAME" != "$NEW_NAME" ]; then
             mv "$OLD_NAME" "$NEW_NAME"
           fi
+
+      - name: Generate package index for APK repository
+        if: env.BUILD_STATUS == 'success'
+        run: |
+          cd openwrt-src
+          ARCH_PACKAGES=$(ls bin/packages/)
+          for dir in bin/packages/$ARCH_PACKAGES/*/; do
+            feed=$(basename $dir)
+            mkdir -p $dir
+            # Generate APK index for each feed
+            (cd $dir && apk-tools index --output packages.adb *.apk 2>/dev/null || true)
+            echo "Generated index for feed: $feed"
+          done
+          # Also index target packages
+          for dir in bin/targets/*/*/packages/; do
+            if [ -d "$dir" ]; then
+              (cd $dir && apk-tools index --output packages.adb *.apk 2>/dev/null || true)
+              echo "Generated index for target packages"
+            fi
+          done
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
@@ -121,7 +149,28 @@ jobs:
             2. Navigate to System → Backup/Flash Firmware
             3. Upload the sysupgrade.bin file
             4. Wait for the router to reboot
+            
+            ### Package Repository
+            APK packages are included in this release.
+            Add the following to `/etc/apk/repositories.d/customfeeds.list` on the router:
+            
+            ```
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/targets/mediatek/filogic/packages/packages.adb
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/packages/aarch64_cortex-a53/base/packages.adb
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/packages/aarch64_cortex-a53/luci/packages.adb
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/packages/aarch64_cortex-a53/packages/packages.adb
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/packages/aarch64_cortex-a53/routing/packages.adb
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/packages/aarch64_cortex-a53/telephony/packages.adb
+            https://github.com/voorz/openwrt/releases/download/${{ github.ref_name }}/packages/aarch64_cortex-a53/video/packages.adb
+            ```
           files: |
             ${{ env.FIRMWARE }}/openwrt-mediatek-filogic-cudy_tr3000-256mb-voorz_v*.squashfs-sysupgrade.bin
+            openwrt-src/bin/packages/aarch64_cortex-a53/base/*
+            openwrt-src/bin/packages/aarch64_cortex-a53/luci/*
+            openwrt-src/bin/packages/aarch64_cortex-a53/packages/*
+            openwrt-src/bin/packages/aarch64_cortex-a53/routing/*
+            openwrt-src/bin/packages/aarch64_cortex-a53/telephony/*
+            openwrt-src/bin/packages/aarch64_cortex-a53/video/*
+            openwrt-src/bin/targets/mediatek/filogic/packages/*
           draft: false
           prerelease: false
