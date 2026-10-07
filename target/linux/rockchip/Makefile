@@ -20,3 +20,4 @@ DEFAULT_PACKAGES += uboot-envtools partx-utils e2fsprogs mkf2fs kmod-gpio-button
 KERNELNAME:=Image dtbs
 
 $(eval $(call BuildTarget))
+
