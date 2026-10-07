@@ -9,7 +9,7 @@
  #define QUANTA_VENDOR_ID			0x0408
  #define QUANTA_PRODUCT_Q101			0xEA02
  #define QUANTA_PRODUCT_Q111			0xEA03
-@@ -1045,6 +1047,13 @@ static const struct usb_device_id option
+@@ -1049,6 +1051,13 @@ static const struct usb_device_id option
  	{ USB_VENDOR_AND_INTERFACE_INFO(HUAWEI_VENDOR_ID, 0xff, 0x06, 0x7B) },
  	{ USB_VENDOR_AND_INTERFACE_INFO(HUAWEI_VENDOR_ID, 0xff, 0x06, 0x7C) },
  
