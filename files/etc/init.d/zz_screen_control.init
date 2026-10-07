@@ -1,0 +1,14 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=01
+
+start() {
+    echo 0 > /sys/class/vtconsole/vtcon1/bind
+}
+
+stop() {
+    /etc/init.d/zz_xgp_screen stop
+    cat /usr/zz/handle_reset_button/reboot.raw > /dev/fb0
+    echo 1 > /sys/class/vtconsole/vtcon1/bind
+}

@@ -239,6 +239,14 @@ define Device/linkease_easepi-r1
 endef
 TARGET_DEVICES += linkease_easepi-r1
 
+define Device/nlnet_xiguapi-v3
+  $(Device/rk3568)
+  DEVICE_VENDOR := NLnet
+  DEVICE_MODEL := XiGuaPi V3
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-input-adc-keys kmod-saradc-rockchip
+endef
+TARGET_DEVICES += nlnet_xiguapi-v3
+
 define Device/lunzn_fastrhino-r66s
   $(Device/rk3568)
   DEVICE_VENDOR := Lunzn

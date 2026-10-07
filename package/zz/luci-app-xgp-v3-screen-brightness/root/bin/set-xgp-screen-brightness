@@ -1,0 +1,32 @@
+#!/bin/bash
+if [ $# -ne 1 ]; then
+    exit 1
+fi
+
+if ! [[ $1 =~ ^[0-9]+$ ]] || [ $1 -lt 0 ] || [ $1 -gt 255 ]; then
+    exit 1
+fi
+
+BRIGHTNESS_PATH="/sys/class/leds/blue:backlight/brightness"
+CURRENT=$(cat $BRIGHTNESS_PATH)
+TARGET=$1
+STEP=1
+WAITLOOP=20
+
+if [ $CURRENT -eq $TARGET ]; then
+    exit 0
+fi
+
+if [ $CURRENT -lt $TARGET ]; then
+    for ((i=$CURRENT; i<=$TARGET; i+=$STEP)); do
+        [ $i -gt $TARGET ] && i=$TARGET
+        echo $i > $BRIGHTNESS_PATH
+        for ((j=0; j<$WAITLOOP; j++)); do echo > /dev/null; done
+    done
+else
+    for ((i=$CURRENT; i>=$TARGET; i-=$STEP)); do
+        [ $i -lt $TARGET ] && i=$TARGET
+        echo $i > $BRIGHTNESS_PATH
+        for ((j=0; j<$WAITLOOP; j++)); do echo > /dev/null; done
+    done
+fi

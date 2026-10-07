@@ -1,0 +1,209 @@
+#!/bin/sh
+is_first_boot=`uci -q get zz_config.@status[0].first_boot`
+if test $is_first_boot -gt 0; then
+uci del dhcp.lan.ra_slaac
+# uci set network.lan.ipaddr='10.0.0.1/24'
+uci add_list network.lan.ip6class='mpcie1v6'
+uci add_list network.lan.ip6class='mpcie2v6'
+uci add_list network.lan.ip6class='wwanv6'
+uci add_list network.lan.ip6class='wan6'
+uci set luci.main.lang='zh_cn'
+uci set luci.main.mediaurlbase='/luci-static/aurora'
+uci add system led
+uci set system.@led[-1].name='system_status'
+uci set system.@led[-1].sysfs='blue:status'
+uci set system.@led[-1].trigger='heartbeat'
+uci set system.@led[-1].inverted='1'
+#uci set cpufreq.global.set='1'
+#uci set cpufreq.cpufreq.minfreq0='600000'
+#uci set cpufreq.cpufreq.maxfreq0='1608000'
+#uci set luci-fan.@luci-fan[0]=luci-fan
+#uci set luci-fan.@luci-fan[0].enabled='1'
+#uci set luci-fan.@luci-fan[0].off_temp='10'
+#uci set luci-fan.@luci-fan[0].on_temp='25'
+uci set qmodem.main.start_delay='15'
+uci set qmodem.main.enable_pcie_scan='1'
+uci set qmodem.main.enable_usb_scan='1'
+uci commit
+/etc/init.d/network reload
+uci set argon.@global[0].mode='dark'
+uci set argon.@global[0].online_wallpaper='none'
+uci set argon.@global[0].transparency_dark='0.3'
+uci commit argon
+
+uci add aurora toolbar_item
+uci set aurora.@toolbar_item[-1].enabled='1'
+uci set aurora.@toolbar_item[-1].title='Wi-Fi'
+uci set aurora.@toolbar_item[-1].url='/cgi-bin/luci/admin/network/wireless'
+uci set aurora.@toolbar_item[-1].icon='wifi.svg'
+uci add aurora toolbar_item
+uci set aurora.@toolbar_item[-1].enabled='1'
+uci set aurora.@toolbar_item[-1].title='Modem'
+uci set aurora.@toolbar_item[-1].url='/cgi-bin/luci/admin/modem/qmodem'
+uci set aurora.@toolbar_item[-1].icon='bandwidth.svg'
+uci commit aurora
+
+uci set attendedsysupgrade.client.login_check_for_upgrades='0'
+uci commit attendedsysupgrade
+
+uci del firewall.@defaults[0].flow_offloading_hw
+uci commit firewall
+
+uci set system.@system[0].ttylogin=1
+
+# /etc/init.d/zz_xgp_screen enable
+# /etc/init.d/zz_xgp_screen start
+
+uci delete mwan3.@rule[-1]
+uci delete mwan3.@rule[-1]
+uci delete mwan3.@rule[-1]
+uci delete mwan3.@rule[-1]
+uci delete mwan3.@rule[-1]
+uci delete mwan3.@policy[-1]
+uci delete mwan3.@policy[-1]
+uci delete mwan3.@policy[-1]
+uci delete mwan3.@policy[-1]
+uci delete mwan3.@policy[-1]
+uci delete mwan3.@policy[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@member[-1]
+uci delete mwan3.@interface[-1]
+uci delete mwan3.@interface[-1]
+uci delete mwan3.@interface[-1]
+uci delete mwan3.@interface[-1]
+uci delete mwan3.@interface[-1]
+uci commit mwan3
+
+uci set qmodem_mwan.global.enable_mwan='1'
+uci set qmodem_mwan.global.sticky_mode='0'
+
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='119.29.29.29'
+
+uci add qmodem_mwan ipv4
+uci set qmodem_mwan.@ipv4[-1].member_priority='1'
+uci set qmodem_mwan.@ipv4[-1].member_weight='1'
+uci set qmodem_mwan.@ipv4[-1].member_interface='wwan'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='test.ustc.edu.cn'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='cip.cc'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='208.67.222.222'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='208.67.220.220'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='119.29.29.29'
+uci set qmodem_mwan.@ipv4[-1].member_priority='50'
+
+uci add qmodem_mwan ipv4
+uci set qmodem_mwan.@ipv4[-1].member_priority='1'
+uci set qmodem_mwan.@ipv4[-1].member_weight='1'
+uci set qmodem_mwan.@ipv4[-1].member_interface='mpcie1'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='test.ustc.edu.cn'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='cip.cc'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='208.67.222.222'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='208.67.220.220'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='119.29.29.29'
+uci set qmodem_mwan.@ipv4[-1].member_priority='50'
+
+uci add qmodem_mwan ipv4
+uci set qmodem_mwan.@ipv4[-1].member_priority='1'
+uci set qmodem_mwan.@ipv4[-1].member_weight='1'
+uci set qmodem_mwan.@ipv4[-1].member_interface='mpcie2'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='test.ustc.edu.cn'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='cip.cc'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='208.67.222.222'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='208.67.220.220'
+uci add_list qmodem_mwan.@ipv4[-1].member_track_ip='119.29.29.29'
+uci set qmodem_mwan.@ipv4[-1].member_priority='50'
+
+uci commit qmodem_mwan
+
+uci set qmodem.wwan=modem-slot
+uci set qmodem.wwan.type='usb'
+uci set qmodem.wwan.slot='8-1'
+uci set qmodem.wwan.net_led='blue:wan'
+uci set qmodem.wwan.alias='wwan'
+uci set qmodem.mpcie1=modem-slot
+uci set qmodem.mpcie1.type='pcie'
+uci set qmodem.mpcie1.slot='0001:11:00.0'
+uci set qmodem.mpcie1.net_led='blue:wan'
+uci set qmodem.mpcie1.alias='mpcie1'
+uci set qmodem.mpcie2=modem-slot
+uci set qmodem.mpcie2.type='pcie'
+uci set qmodem.mpcie2.slot='0002:21:00.0'
+uci set qmodem.mpcie2.net_led='blue:wan'
+uci set qmodem.mpcie2.alias='mpcie2'
+
+uci set qmodem.main.at_tool='1'
+
+if lsusb | grep -q "3466:3301"; then
+    echo "mt5700 3466:3301 detected, disable qmodem dialup" >> /tmp/zz-init.log
+    uci del qmodem.main.at_tool
+fi
+
+if lspci -nn | grep -q "105b:e0f5"; then
+    echo "foxcomm t99w373 105b:e0f5 detected, disable qmodem dialup" >> /tmp/zz-init.log
+    uci set qmodem.main.enable_dial='0'
+fi
+
+uci commit qmodem
+echo "pcie_mhi mhi_mbim_enabled=1" > /etc/modules.d/90-pcie_mhi
+
+/etc/init.d/at-webserver restart
+
+STOR_DEV_FIRST="/dev/mmcblk1p1"
+STOR_DEV_FIRST_MOUNT="/mnt/mmcblk1p1"
+STOR_DEV_SECOND="/dev/mmcblk0p3"
+STOR_DEV_SECOND_MOUNT="/mnt/mmcblk0p3"
+STOR_DEV_TO_MOUNT=""
+STOR_MOUNT_POINT=""
+
+if [ -b "$STOR_DEV_FIRST" ]; then
+    STOR_DEV_TO_MOUNT="$STOR_DEV_FIRST"
+    STOR_MOUNT_POINT="$STOR_DEV_FIRST_MOUNT"
+elif [ -b "$STOR_DEV_SECOND" ]; then
+    STOR_DEV_TO_MOUNT="$STOR_DEV_SECOND"
+    STOR_MOUNT_POINT="$STOR_DEV_SECOND_MOUNT"
+fi
+
+if [ -n "$STOR_DEV_TO_MOUNT" ]; then
+    echo "mount persistent dev $STOR_DEV_TO_MOUNT to $STOR_MOUNT_POINT" >> /tmp/zz-init.log
+    mount "$STOR_DEV_TO_MOUNT" "$STOR_MOUNT_POINT"
+    echo "$STOR_DEV_TO_MOUNT $STOR_MOUNT_POINT auto defaults 0 2" >> /etc/fstab
+    uci set dockerd.globals.data_root="$STOR_MOUNT_POINT/docker/"
+    uci commit dockerd
+    if [ ! -d "$STOR_MOUNT_POINT/bandix" ]; then
+        mkdir -p "$STOR_MOUNT_POINT/bandix"
+    fi
+    uci set bandix.general.data_dir="$STOR_MOUNT_POINT/bandix"
+    uci commit bandix
+    sleep 2
+    /etc/init.d/dockerd restart
+    /etc/init.d/bandix restart
+else
+    echo "persistent dev not found" >> /tmp/zz-init.log
+fi
+
+uci -q set zz_config.@status[0].first_boot=0
+uci commit zz_config
+
+echo "# Uncomment to enable xiguapi v3 screen brightness control cron jobs" >> /etc/crontabs/root
+echo "# minute hour day month weekday /bin/set-xgp-screen-brightness brightness_value(0-255)" >> /etc/crontabs/root
+echo "#0 0 * * * /bin/set-xgp-screen-brightness 128" >> /etc/crontabs/root
+echo "#0 8 * * * /bin/set-xgp-screen-brightness 255" >> /etc/crontabs/root
+
+fi
+
+/etc/init.d/zz_screen_control.init enable
+/etc/init.d/zz_screen_control.init start
+
+exit 0

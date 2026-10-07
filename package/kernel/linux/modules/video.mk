@@ -260,7 +260,7 @@ define KernelPackage/fb-tft
   SUBMENU:=$(VIDEO_MENU)
   TITLE:=Support for small TFT LCD display modules
   DEPENDS:= \
-	  @GPIO_SUPPORT @TARGET_bcm27xx +kmod-backlight \
+	  @GPIO_SUPPORT +kmod-backlight \
 	  +kmod-fb +kmod-fb-sys-fops +kmod-fb-sys-ram +kmod-spi-bitbang
   KCONFIG:= \
        CONFIG_FB_BACKLIGHT=y \
