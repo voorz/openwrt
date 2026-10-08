@@ -51,6 +51,11 @@ jobs:
           # Skip video feed to avoid qt5base recursive dependency issue
           ./scripts/feeds update luci packages routing telephony
           ./scripts/feeds install -a
+          # Remove packages with recursive dependency bugs in upstream
+          rm -f package/feeds/luci/luci-app-weechat/Makefile
+          rm -f package/feeds/packages/weechat-full/Makefile
+          rm -f package/feeds/packages/weechat-minimal/Makefile
+          rm -f package/feeds/packages/squeezelite-custom/Makefile
 
       - name: Load custom config
         run: |
