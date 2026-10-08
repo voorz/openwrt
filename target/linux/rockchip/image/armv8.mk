@@ -244,6 +244,7 @@ define Device/nlnet_xiguapi-v3
   DEVICE_VENDOR := NLnet
   DEVICE_MODEL := XiGuaPi V3
   DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-input-adc-keys kmod-saradc-rockchip
+  UBOOT_DEVICE_NAME := xiguapi-v3-rk3568
 endef
 TARGET_DEVICES += nlnet_xiguapi-v3
 

@@ -323,6 +323,13 @@ define U-Boot/rock-3b-rk3568
     radxa_rock-3b
 endef
 
+define U-Boot/xiguapi-v3-rk3568
+  $(U-Boot/rk3568/Default)
+  NAME:=XiGuaPi V3
+  BUILD_DEVICES:= \
+    nlnet_xiguapi-v3
+endef
+
 
 # RK3576 boards
 
@@ -473,6 +480,7 @@ UBOOT_TARGETS := \
   radxa-e25-rk3568 \
   rock-3a-rk3568 \
   rock-3b-rk3568 \
+  xiguapi-v3-rk3568 \
   nanopi-m5-rk3576 \
   nanopi-r76s-rk3576 \
   rock-4d-rk3576 \
