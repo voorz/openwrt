@@ -10,22 +10,10 @@ The XiGuaPi V3 is an RK3568-based SBC with:
 - M.2 5G modem
 - SPI display (GC9307)
 
-Add support for the XiGuaPi V3 board.
+Add support for the XiGuaPi V3 board using the RK3568 EVB device tree
+for U-Boot, as the EVB provides sufficient base support for boot
+(eMMC, UART, PMIC, SD-card).
 
---- /dev/null
-+++ b/arch/arm/dts/rk3568-xiguapi-v3-u-boot.dtsi
-@@ -0,0 +1,11 @@
-+// SPDX-License-Identifier: GPL-2.0+
-+
-+#include "rk356x-u-boot.dtsi"
-+
-+&sd_pwren {
-+	bootph-pre-ram;
-+};
-+
-+&vcc3v3_sd {
-+	bootph-pre-ram;
-+};
 --- /dev/null
 +++ b/configs/xiguapi-v3-rk3568_defconfig
 @@ -0,0 +1,74 @@
@@ -33,7 +21,7 @@ Add support for the XiGuaPi V3 board.
 +CONFIG_SKIP_LOWLEVEL_INIT=y
 +CONFIG_COUNTER_FREQUENCY=24000000
 +CONFIG_ARCH_ROCKCHIP=y
-+CONFIG_DEFAULT_DEVICE_TREE="rockchip/rk3568-xiguapi-v3"
++CONFIG_DEFAULT_DEVICE_TREE="rockchip/rk3568-evb"
 +CONFIG_ROCKCHIP_RK3568=y
 +CONFIG_SPL_SERIAL=y
 +CONFIG_SYS_LOAD_ADDR=0xc00800
@@ -45,7 +33,7 @@ Add support for the XiGuaPi V3 board.
 +CONFIG_SPL_FIT_SIGNATURE=y
 +CONFIG_SPL_LOAD_FIT=y
 +CONFIG_LEGACY_IMAGE_FORMAT=y
-+CONFIG_DEFAULT_FDT_FILE="rockchip/rk3568-xiguapi-v3.dtb"
++CONFIG_DEFAULT_FDT_FILE="rockchip/rk3568-evb.dtb"
 +# CONFIG_DISPLAY_CPUINFO is not set
 +CONFIG_DISPLAY_BOARDINFO_LATE=y
 +CONFIG_SPL_MAX_SIZE=0x40000
