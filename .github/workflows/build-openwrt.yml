@@ -55,7 +55,9 @@ jobs:
           rm -f package/feeds/luci/luci-app-weechat/Makefile
           rm -f package/feeds/packages/weechat-full/Makefile
           rm -f package/feeds/packages/weechat-minimal/Makefile
-          rm -f package/feeds/packages/squeezelite-custom/Makefile
+          rm -f package/feeds/packages/squeezelite/Makefile
+          # Also remove any squeezelite-custom references
+          find package/feeds/ -path '*squeezelite*' -delete 2>/dev/null || true
 
       - name: Load custom config
         run: |
