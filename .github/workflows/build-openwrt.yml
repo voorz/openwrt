@@ -48,7 +48,8 @@ jobs:
       - name: Update feeds
         run: |
           cd openwrt-src
-          ./scripts/feeds update -a
+          # Skip video feed to avoid qt5base recursive dependency issue
+          ./scripts/feeds update luci packages routing telephony
           ./scripts/feeds install -a
 
       - name: Load custom config
