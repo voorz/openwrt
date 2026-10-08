@@ -48,8 +48,8 @@ jobs:
       - name: Update feeds
         run: |
           cd openwrt-src
-          # Skip video feed to avoid qt5base recursive dependency issue
-          ./scripts/feeds update luci packages routing telephony
+          # Use feeds.conf (includes nikki feed, skips video feed)
+          ./scripts/feeds update -a
           ./scripts/feeds install -a
           # Remove packages with recursive dependency bugs in upstream
           rm -f package/feeds/luci/luci-app-weechat/Makefile
@@ -62,7 +62,7 @@ jobs:
       - name: Load custom config
         run: |
           cd openwrt-src
-          [ -e $GITHUB_WORKSPACE/.config ] && cp $GITHUB_WORKSPACE/.config .config || true
+          cp $GITHUB_WORKSPACE/.config .config
           # Pre-configure custom APK feeds pointing to GitHub Release
           mkdir -p files/etc/apk/repositories.d
           cat > files/etc/apk/repositories.d/customfeeds.list << 'FEEDS'
@@ -73,6 +73,8 @@ jobs:
           make defconfig || true
           # Run defconfig again to ensure config is stable
           make defconfig
+          # Verify target is correct
+          grep CONFIG_TARGET_rockchip .config || { echo "ERROR: target not set to rockchip!"; exit 1; }
 
       - name: Download packages
         run: |
@@ -91,7 +93,14 @@ jobs:
       - name: Organize output files
         if: env.BUILD_STATUS == 'success'
         run: |
-          cd openwrt-src/bin/targets/*/*
+          # Verify and set firmware path
+          if [ -d openwrt-src/bin/targets/rockchip/armv8 ]; then
+            cd openwrt-src/bin/targets/rockchip/armv8
+          else
+            echo "ERROR: rockchip/armv8 target directory not found!"
+            ls -la openwrt-src/bin/targets/*/  2>/dev/null
+            exit 1
+          fi
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           TAG_VERSION=$(echo $GITHUB_REF_NAME | sed 's/^v//; s/\.//g')
           # For rockchip/armv8, the firmware file naming is:
@@ -121,10 +130,10 @@ jobs:
           fi
           cd /tmp/apk-repo
           if [ -n "$APK_TOOLS" ]; then
-            $APK_TOOLS index --output packages.adb *.apk
+            $APK_TOOLS index --allow-untrusted --output packages.adb *.apk
             echo "Generated packages.adb using $APK_TOOLS"
           else
-            apt-get install -y apk-tools 2>/dev/null && apk-tools index --output packages.adb *.apk || true
+            apt-get install -y apk-tools 2>/dev/null && apk-tools index --allow-untrusted --output packages.adb *.apk || true
             echo "Generated packages.adb using system apk-tools"
           fi
           ls -la packages.adb 2>/dev/null || echo "WARNING: packages.adb not found"
@@ -181,24 +190,14 @@ jobs:
       - name: Upload APK packages to packages repo
         if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
-          gh release create ${{ github.ref_name }} \
-            --repo voorz/openwrt-packages \
-            --title "OpenWrt Packages ${{ github.ref_name }}" \
-            --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
-            ${{ env.APK_REPO }}/*.apk \
-            ${{ env.APK_REPO }}/packages.adb 2>/dev/null || \
-          gh release create ${{ github.ref_name }} \
-            --repo voorz/openwrt-packages \
-            --title "OpenWrt Packages ${{ github.ref_name }}" \
-            --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
-            ${{ env.APK_REPO }}/*.apk
+          # Upload APK packages to the same release
+          gh release upload ${{ github.ref_name }} ${{ env.APK_REPO }}/*.apk ${{ env.APK_REPO }}/packages.adb 2>/dev/null || true
         env:
-          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Ensure releases are published
         if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
           gh release edit ${{ github.ref_name }} --draft=false --prerelease=false
-          gh release edit ${{ github.ref_name }} --repo voorz/openwrt-packages --draft=false --prerelease=false
         env:
-          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
