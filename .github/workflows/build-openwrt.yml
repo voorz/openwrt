@@ -62,12 +62,16 @@ jobs:
       - name: Load custom config
         run: |
           cd openwrt-src
-          [ -e $GITHUB_WORKSPACE/.config ] && cp $GITHUB_WORKSPACE/.config .config || make menuconfig DEFCONFIG=1
+          [ -e $GITHUB_WORKSPACE/.config ] && cp $GITHUB_WORKSPACE/.config .config || true
           # Pre-configure custom APK feeds pointing to GitHub Release
           mkdir -p files/etc/apk/repositories.d
           cat > files/etc/apk/repositories.d/customfeeds.list << 'FEEDS'
           https://github.com/voorz/openwrt-packages/releases/latest/download/packages.adb
           FEEDS
+          # Run defconfig non-interactively (CI has no terminal)
+          export TERM=dumb
+          make defconfig || true
+          # Run defconfig again to ensure config is stable
           make defconfig
 
       - name: Download packages
