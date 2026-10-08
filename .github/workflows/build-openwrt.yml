@@ -1,0 +1,192 @@
+name: Build OpenWrt
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  REPO_URL: https://github.com/voorz/openwrt
+  BRANCH: main
+  TARGET: rockchip
+  SUBTARGET: armv8
+  DEVICE: nlnet_xiguapi-v3
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget python3-distutils python3-ply python3-pyelftools
+
+      - name: Clone source
+        run: |
+          git clone --depth 1 --branch $BRANCH $REPO_URL openwrt-src
+          cd openwrt-src
+          git branch
+          git log --oneline -1
+
+      - name: Update feeds
+        run: |
+          cd openwrt-src
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Load custom config
+        run: |
+          cd openwrt-src
+          [ -e $GITHUB_WORKSPACE/.config ] && cp $GITHUB_WORKSPACE/.config .config || make menuconfig DEFCONFIG=1
+          # Pre-configure custom APK feeds pointing to GitHub Release
+          mkdir -p files/etc/apk/repositories.d
+          cat > files/etc/apk/repositories.d/customfeeds.list << 'FEEDS'
+          https://github.com/voorz/openwrt-packages/releases/latest/download/packages.adb
+          FEEDS
+          make defconfig
+
+      - name: Download packages
+        run: |
+          cd openwrt-src
+          make download -j$(nproc)
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -delete
+
+      - name: Compile firmware
+        run: |
+          cd openwrt-src
+          make -j$(nproc) || make -j1 || make -j1 V=s
+          echo "BUILD_STATUS=success" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date +"%m.%d.%Y")" >> $GITHUB_ENV
+
+      - name: Organize output files
+        if: env.BUILD_STATUS == 'success'
+        run: |
+          cd openwrt-src/bin/targets/*/*
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          TAG_VERSION=$(echo $GITHUB_REF_NAME | sed 's/^v//; s/\.//g')
+          # For rockchip/armv8, the firmware file naming is:
+          # openwrt-rockchip-armv8-nlnet_xiguapi-v3-squashfs-sysupgrade.bin
+          OLD_NAME=$(ls openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin 2>/dev/null | head -1)
+          NEW_NAME="openwrt-rockchip-armv8-nlnet_xiguapi-v3-voorz_v${TAG_VERSION}-squashfs-sysupgrade.bin"
+          if [ -n "$OLD_NAME" ] && [ "$OLD_NAME" != "$NEW_NAME" ]; then
+            mv "$OLD_NAME" "$NEW_NAME"
+          fi
+          ls -la *.bin 2>/dev/null || echo "No firmware bin files found"
+
+      - name: Generate package index for APK repository
+        if: env.BUILD_STATUS == 'success'
+        run: |
+          cd openwrt-src
+          mkdir -p /tmp/apk-repo
+          # Collect all .apk files into a single flat directory
+          find bin/packages/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
+          find bin/targets/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
+          # Copy firmware to repo dir for upload
+          cp $FIRMWARE/openwrt-rockchip-armv8-nlnet_xiguapi-v3-voorz_v*.squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || \
+          cp $FIRMWARE/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || true
+          # Generate single combined index
+          APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir/host/bin -name 'apk' -type f 2>/dev/null | head -1)
+          if [ -z "$APK_TOOLS" ]; then
+            APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir -name 'apk' -type f 2>/dev/null | head -1)
+          fi
+          cd /tmp/apk-repo
+          if [ -n "$APK_TOOLS" ]; then
+            $APK_TOOLS index --output packages.adb *.apk
+            echo "Generated packages.adb using $APK_TOOLS"
+          else
+            apt-get install -y apk-tools 2>/dev/null && apk-tools index --output packages.adb *.apk || true
+            echo "Generated packages.adb using system apk-tools"
+          fi
+          ls -la packages.adb 2>/dev/null || echo "WARNING: packages.adb not found"
+          echo "Total packages: $(ls /tmp/apk-repo/*.apk | wc -l)"
+          echo "APK_REPO=/tmp/apk-repo" >> $GITHUB_ENV
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        if: env.BUILD_STATUS == 'success'
+        with:
+          name: OpenWrt firmware ${{ env.DEVICE }} ${{ env.BUILD_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      - name: Generate release tag
+        id: tag
+        if: env.BUILD_STATUS == 'success'
+        run: |
+          echo "RELEASE_TAG=openwrt-$(date +"%Y%m%d")-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenWrt ${{ github.ref_name }}
+          body: |
+            ## OpenWrt Firmware
+            
+            **Device**: XiGuaPi V3 (NLnet)
+            **Platform**: Rockchip RK3568 (rockchip/armv8)
+            **Build Date**: ${{ env.BUILD_DATE }}
+            
+            ### Firmware Features
+            - LuCI Web Interface
+            - Argon theme + Chinese language pack
+            - GC9307 SPI Screen support
+            - MT7922 WiFi (2.4G/5G/6G)
+            - USB 5G module support (QMI)
+            - Docker support
+            
+            ### Installation
+            1. Access router admin panel at http://10.1.1.1
+            2. Navigate to System → Backup/Flash Firmware
+            3. Upload the sysupgrade.bin file
+            4. Wait for the router to reboot
+            
+            ### Package Repository
+            APK packages are available at: https://github.com/voorz/openwrt-packages/releases
+          files: |
+            ${{ env.FIRMWARE }}/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin
+          draft: false
+          prerelease: false
+
+      - name: Upload APK packages to packages repo
+        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --repo voorz/openwrt-packages \
+            --title "OpenWrt Packages ${{ github.ref_name }}" \
+            --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
+            ${{ env.APK_REPO }}/*.apk \
+            ${{ env.APK_REPO }}/packages.adb 2>/dev/null || \
+          gh release create ${{ github.ref_name }} \
+            --repo voorz/openwrt-packages \
+            --title "OpenWrt Packages ${{ github.ref_name }}" \
+            --notes "APK packages for OpenWrt ${{ github.ref_name }}" \
+            ${{ env.APK_REPO }}/*.apk
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+
+      - name: Ensure releases are published
+        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          gh release edit ${{ github.ref_name }} --draft=false --prerelease=false
+          gh release edit ${{ github.ref_name }} --repo voorz/openwrt-packages --draft=false --prerelease=false
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
