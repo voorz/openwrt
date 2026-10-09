@@ -120,25 +120,31 @@ jobs:
           # Collect all .apk files into a single flat directory
           find bin/packages/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
           find bin/targets/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
-          # Copy firmware to repo dir for upload
-          cp $FIRMWARE/openwrt-rockchip-armv8-nlnet_xiguapi-v3-voorz_v*.squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || \
-          cp $FIRMWARE/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin /tmp/apk-repo/ 2>/dev/null || true
+          # DO NOT copy firmware .bin into apk-repo (causes index errors)
           # Generate single combined index
           APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir/host/bin -name 'apk' -type f 2>/dev/null | head -1)
           if [ -z "$APK_TOOLS" ]; then
             APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir -name 'apk' -type f 2>/dev/null | head -1)
           fi
           cd /tmp/apk-repo
-          if [ -n "$APK_TOOLS" ]; then
-            $APK_TOOLS index --allow-untrusted --output packages.adb *.apk
+          if [ -n "$APK_TOOLS" ] && ls *.apk >/dev/null 2>&1; then
+            $APK_TOOLS index --allow-untrusted --output packages.adb *.apk || echo "WARNING: apk index failed, continuing anyway"
             echo "Generated packages.adb using $APK_TOOLS"
           else
-            apt-get install -y apk-tools 2>/dev/null && apk-tools index --allow-untrusted --output packages.adb *.apk || true
-            echo "Generated packages.adb using system apk-tools"
+            echo "WARNING: No apk tool or no apk files found, skipping index"
           fi
           ls -la packages.adb 2>/dev/null || echo "WARNING: packages.adb not found"
-          echo "Total packages: $(ls /tmp/apk-repo/*.apk | wc -l)"
+          echo "Total packages: $(ls /tmp/apk-repo/*.apk 2>/dev/null | wc -l)"
           echo "APK_REPO=/tmp/apk-repo" >> $GITHUB_ENV
+          # Also set firmware file path for upload
+          FIRMWARE_BIN=$(ls $FIRMWARE/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin 2>/dev/null | head -1)
+          if [ -n "$FIRMWARE_BIN" ]; then
+            echo "FIRMWARE_BIN=$FIRMWARE_BIN" >> $GITHUB_ENV
+            echo "Found firmware: $FIRMWARE_BIN"
+          else
+            echo "WARNING: No firmware bin found!"
+            ls -la $FIRMWARE/*.bin 2>/dev/null || true
+          fi
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
@@ -183,7 +189,7 @@ jobs:
             ### Package Repository
             APK packages are available at: https://github.com/voorz/openwrt-packages/releases
           files: |
-            ${{ env.FIRMWARE }}/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin
+            ${{ env.FIRMWARE_BIN }}
           draft: false
           prerelease: false
 
@@ -191,7 +197,11 @@ jobs:
         if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
           # Upload APK packages to the same release
-          gh release upload ${{ github.ref_name }} ${{ env.APK_REPO }}/*.apk ${{ env.APK_REPO }}/packages.adb 2>/dev/null || true
+          if [ -d "${{ env.APK_REPO }}" ]; then
+            gh release upload ${{ github.ref_name }} ${{ env.APK_REPO }}/*.apk ${{ env.APK_REPO }}/packages.adb 2>/dev/null || true
+          else
+            echo "WARNING: APK_REPO not set, skipping APK upload"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
