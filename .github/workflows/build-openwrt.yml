@@ -48,7 +48,6 @@ jobs:
       - name: Update feeds
         run: |
           cd openwrt-src
-          # Use feeds.conf (includes nikki feed, skips video feed)
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           # Remove packages with recursive dependency bugs in upstream
@@ -56,18 +55,12 @@ jobs:
           rm -f package/feeds/packages/weechat-full/Makefile
           rm -f package/feeds/packages/weechat-minimal/Makefile
           rm -f package/feeds/packages/squeezelite/Makefile
-          # Also remove any squeezelite-custom references
           find package/feeds/ -path '*squeezelite*' -delete 2>/dev/null || true
 
       - name: Load custom config
         run: |
           cd openwrt-src
           cp $GITHUB_WORKSPACE/.config .config
-          # Pre-configure custom APK feeds pointing to GitHub Release
-          mkdir -p files/etc/apk/repositories.d
-          cat > files/etc/apk/repositories.d/customfeeds.list << 'FEEDS'
-          https://github.com/voorz/openwrt-packages/releases/latest/download/packages.adb
-          FEEDS
           # Run defconfig non-interactively (CI has no terminal)
           export TERM=dumb
           make defconfig || true
@@ -75,6 +68,8 @@ jobs:
           make defconfig
           # Verify target is correct
           grep CONFIG_TARGET_rockchip .config || { echo "ERROR: target not set to rockchip!"; exit 1; }
+          # Verify APK is enabled
+          grep -q 'CONFIG_USE_APK=y' .config && echo "OK: APK is enabled" || echo "WARNING: CONFIG_USE_APK not found, may default to enabled"
 
       - name: Download packages
         run: |
@@ -90,124 +85,139 @@ jobs:
           echo "BUILD_STATUS=success" >> $GITHUB_ENV
           echo "BUILD_DATE=$(date +"%m.%d.%Y")" >> $GITHUB_ENV
 
-      - name: Organize output files
+      - name: Collect build outputs
         if: env.BUILD_STATUS == 'success'
         run: |
-          # Verify and set firmware path
-          if [ -d openwrt-src/bin/targets/rockchip/armv8 ]; then
-            cd openwrt-src/bin/targets/rockchip/armv8
-          else
+          # Set firmware directory
+          FIRMWARE_DIR="openwrt-src/bin/targets/rockchip/armv8"
+          if [ ! -d "$FIRMWARE_DIR" ]; then
             echo "ERROR: rockchip/armv8 target directory not found!"
             ls -la openwrt-src/bin/targets/*/  2>/dev/null
             exit 1
           fi
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-          TAG_VERSION=$(echo $GITHUB_REF_NAME | sed 's/^v//; s/\.//g')
-          # For rockchip/armv8, the firmware file naming is:
-          # openwrt-rockchip-armv8-nlnet_xiguapi-v3-squashfs-sysupgrade.bin
-          OLD_NAME=$(ls openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin 2>/dev/null | head -1)
-          NEW_NAME="openwrt-rockchip-armv8-nlnet_xiguapi-v3-voorz_v${TAG_VERSION}-squashfs-sysupgrade.bin"
-          if [ -n "$OLD_NAME" ] && [ "$OLD_NAME" != "$NEW_NAME" ]; then
-            mv "$OLD_NAME" "$NEW_NAME"
-          fi
-          ls -la *.bin 2>/dev/null || echo "No firmware bin files found"
+          echo "FIRMWARE=$GITHUB_WORKSPACE/$FIRMWARE_DIR" >> $GITHUB_ENV
 
-      - name: Generate package index for APK repository
-        if: env.BUILD_STATUS == 'success'
-        run: |
-          cd openwrt-src
-          mkdir -p /tmp/apk-repo
-          # Collect all .apk files into a single flat directory
-          find bin/packages/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
-          find bin/targets/ -name '*.apk' -exec cp {} /tmp/apk-repo/ \;
-          # DO NOT copy firmware .bin into apk-repo (causes index errors)
-          # Generate single combined index
-          APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir/host/bin -name 'apk' -type f 2>/dev/null | head -1)
-          if [ -z "$APK_TOOLS" ]; then
-            APK_TOOLS=$(find /home/runner/work/openwrt/openwrt/openwrt-src/staging_dir -name 'apk' -type f 2>/dev/null | head -1)
+          echo "=== All files in target directory ==="
+          ls -la "$FIRMWARE_DIR/"
+
+          # Find sysupgrade bin (try multiple patterns)
+          FIRMWARE_BIN=""
+          for pattern in \
+            "openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin" \
+            "openwrt-rockchip-armv8-*-squashfs-sysupgrade.bin" \
+            "*-squashfs-sysupgrade.bin"; do
+            FIRMWARE_BIN=$(ls "$FIRMWARE_DIR"/$pattern 2>/dev/null | head -1)
+            if [ -n "$FIRMWARE_BIN" ]; then
+              echo "Found firmware with pattern: $pattern"
+              break
+            fi
+          done
+
+          # Rename firmware with version tag
+          TAG_VERSION=$(echo $GITHUB_REF_NAME | sed 's/^v//; s/\.//g')
+          if [ -n "$FIRMWARE_BIN" ]; then
+            BASENAME=$(basename "$FIRMWARE_BIN")
+            NEW_NAME="openwrt-rockchip-armv8-nlnet_xiguapi-v3-voorz_v${TAG_VERSION}-squashfs-sysupgrade.bin"
+            if [ "$BASENAME" != "$NEW_NAME" ]; then
+              mv "$FIRMWARE_BIN" "$FIRMWARE_DIR/$NEW_NAME"
+              FIRMWARE_BIN="$FIRMWARE_DIR/$NEW_NAME"
+            fi
+            echo "FIRMWARE_BIN=$FIRMWARE_BIN" >> $GITHUB_ENV
+            echo "Firmware file: $FIRMWARE_BIN"
+          else
+            echo "WARNING: No sysupgrade.bin found!"
+            echo "=== All .bin and .img files ==="
+            find "$FIRMWARE_DIR" -name '*.bin' -o -name '*.img' 2>/dev/null || true
           fi
-          cd /tmp/apk-repo
-          if [ -n "$APK_TOOLS" ] && ls *.apk >/dev/null 2>&1; then
-            $APK_TOOLS index --allow-untrusted --output packages.adb *.apk || echo "WARNING: apk index failed, continuing anyway"
+
+          # Find factory bin (for first-flash)
+          FACTORY_BIN=$(ls "$FIRMWARE_DIR"/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-factory.bin 2>/dev/null | head -1 || ls "$FIRMWARE_DIR"/openwrt-rockchip-armv8-*-squashfs-factory.bin 2>/dev/null | head -1 || true)
+          if [ -n "$FACTORY_BIN" ]; then
+            echo "FACTORY_BIN=$FACTORY_BIN" >> $GITHUB_ENV
+            echo "Factory image: $FACTORY_BIN"
+          fi
+
+          # Collect APK packages
+          mkdir -p /tmp/pkg-repo
+          find openwrt-src/bin/packages/ -name '*.apk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          find openwrt-src/bin/targets/ -name '*.apk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          # Also collect IPK files if any
+          find openwrt-src/bin/packages/ -name '*.ipk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          find openwrt-src/bin/targets/ -name '*.ipk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          echo "PKG_REPO=/tmp/pkg-repo" >> $GITHUB_ENV
+          echo "Total packages: $(ls /tmp/pkg-repo/*.apk 2>/dev/null | wc -l) apk, $(ls /tmp/pkg-repo/*.ipk 2>/dev/null | wc -l) ipk"
+
+          # Generate APK index (packages.adb) using OpenWrt's built apk tool
+          APK_TOOLS=$(find openwrt-src/staging_dir/host/bin -name 'apk' -type f 2>/dev/null | head -1)
+          if [ -z "$APK_TOOLS" ]; then
+            APK_TOOLS=$(find openwrt-src/staging_dir -name 'apk' -type f 2>/dev/null | head -1)
+          fi
+          if [ -n "$APK_TOOLS" ] && ls /tmp/pkg-repo/*.apk >/dev/null 2>&1; then
+            (cd /tmp/pkg-repo && $APK_TOOLS index --allow-untrusted --output packages.adb *.apk || echo "WARNING: apk index failed")
             echo "Generated packages.adb using $APK_TOOLS"
           else
             echo "WARNING: No apk tool or no apk files found, skipping index"
           fi
-          ls -la packages.adb 2>/dev/null || echo "WARNING: packages.adb not found"
-          echo "Total packages: $(ls /tmp/apk-repo/*.apk 2>/dev/null | wc -l)"
-          echo "APK_REPO=/tmp/apk-repo" >> $GITHUB_ENV
-          # Also set firmware file path for upload
-          FIRMWARE_BIN=$(ls $FIRMWARE/openwrt-rockchip-armv8-nlnet_xiguapi-v3-*-squashfs-sysupgrade.bin 2>/dev/null | head -1)
-          if [ -n "$FIRMWARE_BIN" ]; then
-            echo "FIRMWARE_BIN=$FIRMWARE_BIN" >> $GITHUB_ENV
-            echo "Found firmware: $FIRMWARE_BIN"
-          else
-            echo "WARNING: No firmware bin found!"
-            ls -la $FIRMWARE/*.bin 2>/dev/null || true
-          fi
 
-      - name: Upload firmware
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         if: env.BUILD_STATUS == 'success'
         with:
           name: OpenWrt firmware ${{ env.DEVICE }} ${{ env.BUILD_DATE }}
           path: ${{ env.FIRMWARE }}
 
-      - name: Generate release tag
-        id: tag
-        if: env.BUILD_STATUS == 'success'
-        run: |
-          echo "RELEASE_TAG=openwrt-$(date +"%Y%m%d")-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
-
-      - name: Upload firmware to release
-        uses: softprops/action-gh-release@v2
-        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: OpenWrt ${{ github.ref_name }}
-          body: |
-            ## OpenWrt Firmware
-            
-            **Device**: XiGuaPi V3 (NLnet)
-            **Platform**: Rockchip RK3568 (rockchip/armv8)
-            **Build Date**: ${{ env.BUILD_DATE }}
-            
-            ### Firmware Features
-            - LuCI Web Interface
-            - Argon theme + Chinese language pack
-            - GC9307 SPI Screen support
-            - MT7922 WiFi (2.4G/5G/6G)
-            - USB 5G module support (QMI)
-            - Docker support
-            
-            ### Installation
-            1. Access router admin panel at http://10.1.1.1
-            2. Navigate to System → Backup/Flash Firmware
-            3. Upload the sysupgrade.bin file
-            4. Wait for the router to reboot
-            
-            ### Package Repository
-            APK packages are available at: https://github.com/voorz/openwrt-packages/releases
-          files: |
-            ${{ env.FIRMWARE_BIN }}
-          draft: false
-          prerelease: false
-
-      - name: Upload APK packages to packages repo
+      - name: Upload to GitHub Release
         if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
         run: |
-          # Upload APK packages to the same release
-          if [ -d "${{ env.APK_REPO }}" ]; then
-            gh release upload ${{ github.ref_name }} ${{ env.APK_REPO }}/*.apk ${{ env.APK_REPO }}/packages.adb 2>/dev/null || true
+          # Upload firmware bin
+          if [ -n "${{ env.FIRMWARE_BIN }}" ] && [ -f "${{ env.FIRMWARE_BIN }}" ]; then
+            gh release upload "${{ github.ref_name }}" "${{ env.FIRMWARE_BIN }}" --clobber
+            echo "Uploaded firmware: ${{ env.FIRMWARE_BIN }}"
           else
-            echo "WARNING: APK_REPO not set, skipping APK upload"
+            echo "WARNING: No firmware bin to upload!"
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}
 
-      - name: Ensure releases are published
-        if: always() && env.BUILD_STATUS == 'success' && startsWith(github.ref, 'refs/tags/')
-        run: |
-          gh release edit ${{ github.ref_name }} --draft=false --prerelease=false
+          # Upload factory bin if exists
+          if [ -n "${{ env.FACTORY_BIN }}" ] && [ -f "${{ env.FACTORY_BIN }}" ]; then
+            gh release upload "${{ github.ref_name }}" "${{ env.FACTORY_BIN }}" --clobber
+            echo "Uploaded factory image: ${{ env.FACTORY_BIN }}"
+          fi
+
+          # Upload APK/IPK packages (batch to avoid too many args)
+          if [ -d "${{ env.PKG_REPO }}" ]; then
+            cd "${{ env.PKG_REPO }}"
+            # Upload packages.adb index
+            if [ -f packages.adb ]; then
+              gh release upload "${{ github.ref_name }}" packages.adb --clobber
+              echo "Uploaded packages.adb index"
+            fi
+            # Upload APKs in batches
+            ls *.apk 2>/dev/null | xargs -n50 gh release upload "${{ github.ref_name }}" --clobber || true
+            # Upload IPKs in batches (if any)
+            ls *.ipk 2>/dev/null | xargs -n50 gh release upload "${{ github.ref_name }}" --clobber || true
+            echo "Uploaded packages"
+          fi
+
+          # Ensure release is published (not draft)
+          gh release edit "${{ github.ref_name }}" --draft=false --prerelease=false \
+            --title "OpenWrt ${{ github.ref_name }}" \
+            --notes "## OpenWrt Firmware
+
+          **Device**: XiGuaPi V3 (NLnet)
+          **Platform**: Rockchip RK3568 (rockchip/armv8)
+          **Build Date**: ${{ env.BUILD_DATE }}
+
+          ### Firmware Features
+          - LuCI Web Interface
+          - Argon theme + Chinese language pack
+          - GC9307 SPI Screen support
+          - MT7922 WiFi (2.4G/5G/6G)
+          - Docker support
+
+          ### Installation
+          1. Access router admin panel at http://10.1.1.1
+          2. Navigate to System -> Backup/Flash Firmware
+          3. Upload the sysupgrade.bin file
+          4. Wait for the router to reboot"
         env:
           GH_TOKEN: ${{ github.token }}
