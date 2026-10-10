@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget python3-distutils python3-ply python3-pyelftools
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-setuptools rsync swig unzip zlib1g-dev file wget python3-distutils python3-ply python3-pyelftools apk-tools
 
       - name: Clone source
         run: |
@@ -68,8 +68,8 @@ jobs:
           make defconfig
           # Verify target is correct
           grep CONFIG_TARGET_rockchip .config || { echo "ERROR: target not set to rockchip!"; exit 1; }
-          # Verify APK is disabled
-          grep -q 'CONFIG_USE_APK=y' .config && { echo "ERROR: CONFIG_USE_APK is enabled, will cause build failures!"; exit 1; } || echo "OK: APK is disabled, using OPKG"
+          # Verify APK is enabled
+          grep -q 'CONFIG_USE_APK=y' .config && echo "OK: APK is enabled" || echo "WARNING: CONFIG_USE_APK not found, may default to enabled"
 
       - name: Download packages
         run: |
@@ -137,26 +137,20 @@ jobs:
             echo "Factory image: $FACTORY_BIN"
           fi
 
-          # Collect IPK packages (OPKG format, not APK)
-          mkdir -p /tmp/ipk-repo
-          find openwrt-src/bin/packages/ -name '*.ipk' -exec cp {} /tmp/ipk-repo/ \; 2>/dev/null || true
-          find openwrt-src/bin/targets/ -name '*.ipk' -exec cp {} /tmp/ipk-repo/ \; 2>/dev/null || true
-          # Also collect any .apk files if present
-          find openwrt-src/bin/packages/ -name '*.apk' -exec cp {} /tmp/ipk-repo/ \; 2>/dev/null || true
-          find openwrt-src/bin/targets/ -name '*.apk' -exec cp {} /tmp/ipk-repo/ \; 2>/dev/null || true
-          echo "IPK_REPO=/tmp/ipk-repo" >> $GITHUB_ENV
-          echo "Total packages: $(ls /tmp/ipk-repo/*.{ipk,apk} 2>/dev/null | wc -l)"
+          # Collect APK packages
+          mkdir -p /tmp/pkg-repo
+          find openwrt-src/bin/packages/ -name '*.apk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          find openwrt-src/bin/targets/ -name '*.apk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          # Also collect IPK files if any
+          find openwrt-src/bin/packages/ -name '*.ipk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          find openwrt-src/bin/targets/ -name '*.ipk' -exec cp {} /tmp/pkg-repo/ \; 2>/dev/null || true
+          echo "PKG_REPO=/tmp/pkg-repo" >> $GITHUB_ENV
+          echo "Total packages: $(ls /tmp/pkg-repo/*.apk 2>/dev/null | wc -l) apk, $(ls /tmp/pkg-repo/*.ipk 2>/dev/null | wc -l) ipk"
 
-          # Generate Packages.gz index for opkg
-          if ls /tmp/ipk-repo/*.ipk >/dev/null 2>&1; then
-            (cd /tmp/ipk-repo && for f in *.ipk; do
-              ar p "$f" control.tar.gz | tar xzO ./control 2>/dev/null
-              echo ""
-              echo "Filename: $f"
-              echo "Size: $(stat -c%s "$f")"
-              echo "MD5Sum: $(md5sum "$f" | cut -d' ' -f1)"
-            done > Packages && gzip -kf Packages)
-            echo "Generated Packages.gz index"
+          # Generate APK index (packages.adb) using system apk tool
+          if ls /tmp/pkg-repo/*.apk >/dev/null 2>&1; then
+            (cd /tmp/pkg-repo && apk index --allow-untrusted --output packages.adb *.apk || echo "WARNING: apk index failed")
+            echo "Generated packages.adb index"
           fi
 
       - name: Upload firmware artifact
@@ -183,17 +177,19 @@ jobs:
             echo "Uploaded factory image: ${{ env.FACTORY_BIN }}"
           fi
 
-          # Upload IPK packages (batch to avoid too many args)
-          if [ -d "${{ env.IPK_REPO }}" ]; then
-            cd "${{ env.IPK_REPO }}"
-            # Upload Packages.gz index
-            if [ -f Packages.gz ]; then
-              gh release upload "${{ github.ref_name }}" Packages.gz --clobber
-              echo "Uploaded Packages.gz index"
+          # Upload APK/IPK packages (batch to avoid too many args)
+          if [ -d "${{ env.PKG_REPO }}" ]; then
+            cd "${{ env.PKG_REPO }}"
+            # Upload packages.adb index
+            if [ -f packages.adb ]; then
+              gh release upload "${{ github.ref_name }}" packages.adb --clobber
+              echo "Uploaded packages.adb index"
             fi
-            # Upload IPKs in batches
+            # Upload APKs in batches
+            ls *.apk 2>/dev/null | xargs -n50 gh release upload "${{ github.ref_name }}" --clobber || true
+            # Upload IPKs in batches (if any)
             ls *.ipk 2>/dev/null | xargs -n50 gh release upload "${{ github.ref_name }}" --clobber || true
-            echo "Uploaded IPK packages"
+            echo "Uploaded packages"
           fi
 
           # Ensure release is published (not draft)
