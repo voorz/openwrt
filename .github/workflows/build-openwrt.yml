@@ -56,6 +56,9 @@ jobs:
           rm -f package/feeds/packages/weechat-minimal/Makefile
           rm -f package/feeds/packages/squeezelite/Makefile
           find package/feeds/ -path '*squeezelite*' -delete 2>/dev/null || true
+          # Remove mihomo/nikki to prevent recursive dependency
+          find package/feeds/ -path '*mihomo*' -delete 2>/dev/null || true
+          find package/feeds/ -path '*nikki*' -delete 2>/dev/null || true
 
       - name: Load custom config
         run: |
@@ -221,3 +224,4 @@ jobs:
           4. Wait for the router to reboot"
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
